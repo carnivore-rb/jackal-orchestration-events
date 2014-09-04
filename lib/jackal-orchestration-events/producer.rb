@@ -8,6 +8,7 @@ module Jackal
     class Producer
 
       include Celluloid
+      include Carnivore::Utils::Logging
 
       # default interval between API poll
       DEFAULT_POLL_INTERVAL = 30
@@ -42,7 +43,8 @@ module Jackal
         @poller = nil
         @source_name = args[:send_to]
         @cache_directory = args.fetch(:cache, '/tmp')
-        seed_events
+        @interval = args.fetch(:interval, DEFAULT_POLL_INTERVAL)
+        load_seed
         if(args.fetch(:auto_start, true))
           unpause
         end
@@ -85,8 +87,10 @@ module Jackal
       def poll
         result = fetch_events
         diff_and_cache(result).each do |event|
+          debug "Injecting new stack events: #{event.inspect}"
           send_to.transmit(event)
         end
+        save_seed
       end
 
       # Detect state changes against current seed. Store
@@ -98,24 +102,29 @@ module Jackal
         change_stacks = (@seed.keys + state.keys).uniq.map do |stack_id|
           stack = @connection.stacks.get(stack_id)
           if(@seed.fetch(stack_id, :stack_status) != state.fetch(stack_id, :stack_status))
-            stack_status = stack ? stack.stack_status : 'DELETE_COMPLETE'
+            if(stack)
+              stack_status = stack.stack_status
+              stack_name = stack.stack_name
+            else
+              stack_status = 'DELETE_COMPLETE'
+              stack_name = @seed.fetch(stack_id, state.fetch(stack_id, {}))[:stack_name]
+            end
             Smash.new(
               :stack_id => stack_id,
-              :stack_name => stack.stack_name,
+              :stack_name => stack_name,
               :event_id => Celluloid.uuid,
-              :logical_resource_id => stack.stack_name,
+              :logical_resource_id => stack_name,
               :physical_resource_id => stack_id,
               :timestamp => Time.now.iso8601,
-              :resource_type => 'AWS::CloudFormation::Stack',
+              :resource_type => stack.class.name,
               :resource_status => stack_status
             )
           end
         end.compact
-        new_events = state.each do |stack_id, info|
-          events = info[:events] - @seed[stack_id][:events]
+        new_events = state.map do |stack_id, info|
+          info[:events] - @seed.fetch(stack_id, {}).fetch(:events, [])
         end.flatten(1)
         @seed = state
-        save_seed
         change_stacks + new_events
       end
 
@@ -125,10 +134,11 @@ module Jackal
       def fetch_events
         Smash[
           @connection.stacks.reload.map do |stack|
-            [stack.stack_id,
+            [stack.id,
               Smash.new(
-                :events => stack.events,
-                :status => stack.stack_status
+                :events => stack.events.map(&:attributes),
+                :status => stack.stack_status,
+                :stack_name => stack.stack_name
               )
             ]
           end
