@@ -27,7 +27,7 @@ module Jackal
       def build_producer(creds)
         producer = Producer.new(
           :credentials => creds,
-          :send_to => self.name
+          :send_to => self.name.split(':').first
         )
         self.link producer
         producer
