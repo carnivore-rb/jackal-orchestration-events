@@ -85,12 +85,20 @@ module Jackal
 
       # Poll for events
       def poll
-        result = fetch_events
-        diff_and_cache(result).each do |event|
-          debug "Injecting new stack events: #{event.inspect}"
-          send_to.transmit(event)
+        begin
+          result = fetch_events
+          diff_and_cache(result).each do |event|
+            debug "Injecting new stack events: #{event.inspect}"
+            send_to.transmit(event)
+          end
+          save_seed
+        rescue => e
+          error "Unexpected error encountered! (#{e.message})"
+          debug "#{e.class}: #{e}\n#{e.backtrace.join("\n")}"
+          warn 'Forcing 10 second pause to allow remote recovery'
+          sleep 10
+          warn 'Recovery pause complete'
         end
-        save_seed
       end
 
       # Detect state changes against current seed. Store
@@ -109,6 +117,7 @@ module Jackal
               stack_status = 'DELETE_COMPLETE'
               stack_name = @seed.fetch(stack_id, state.fetch(stack_id, {}))[:stack_name]
             end
+            # @todo provide expected stack resource type
             Smash.new(
               :stack_id => stack_id,
               :stack_name => stack_name,
@@ -116,7 +125,7 @@ module Jackal
               :logical_resource_id => stack_name,
               :physical_resource_id => stack_id,
               :timestamp => Time.now.iso8601,
-              :resource_type => stack.class.name,
+              :resource_type => 'AWS::CloudFormation::Stack',
               :resource_status => stack_status
             )
           end
