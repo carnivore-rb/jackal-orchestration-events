@@ -7,7 +7,8 @@ module Jackal
     # Generate event artifacts from orchestration stacks
     class Producer
 
-      include Celluloid
+      include Zoidberg::SoftShell
+      include Zoidberg::Supervise
       include Carnivore::Utils::Logging
 
       # default interval between API poll
@@ -121,11 +122,11 @@ module Jackal
             Smash.new(
               :stack_id => stack_id,
               :stack_name => stack_name,
-              :event_id => Celluloid.uuid,
+              :event_id => Carnivore.uuid,
               :logical_resource_id => stack_name,
               :physical_resource_id => stack_id,
               :timestamp => Time.now.iso8601,
-              :resource_type => 'AWS::CloudFormation::Stack',
+              :resource_type => config.fetch(:stack_resource_type, 'AWS::CloudFormation::Stack'),
               :resource_status => stack_status
             )
           end

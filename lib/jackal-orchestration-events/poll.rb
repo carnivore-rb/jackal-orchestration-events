@@ -5,8 +5,6 @@ module Jackal
     # Poll orchestration API for events
     class Poll < Jackal::Callback
 
-      trap_exit :producer_failure
-
       # @return [Array<Producer>]
       attr_reader :producers
       # @return [Array<Hash>]
@@ -29,7 +27,6 @@ module Jackal
           :credentials => creds,
           :send_to => self.name.split(':').first
         )
-        self.link producer
         producer
       end
 
